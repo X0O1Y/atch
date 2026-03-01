@@ -503,8 +503,12 @@ static void client_activity(struct client *p)
 	}
 
 	/* Attach or detach from the program. */
-	else if (pkt.type == MSG_ATTACH)
-		replay_start(p);
+	else if (pkt.type == MSG_ATTACH) {
+		if (pkt.len)
+			p->attached = 1;	/* client loaded log; skip ring */
+		else
+			replay_start(p);
+	}
 	else if (pkt.type == MSG_DETACH)
 		p->attached = 0;
 

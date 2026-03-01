@@ -150,10 +150,15 @@ static void process_kbd(int s, struct packet *pkt)
 	write_packet_or_fail(s, pkt);
 }
 
+/* Set to 1 once we have replayed the on-disk log, so attach_main
+** knows not to replay it a second time. */
+static int log_already_replayed;
+
 /* Replay sockname+".log" to stdout, if it exists.
 ** saved_errno is from the failed connect: ECONNREFUSED means the session was
 ** killed/crashed (socket still on disk), ENOENT means clean exit (socket was
 ** unlinked; end marker is already in the log).
+** Pass 0 when replaying for a running session (no end message printed).
 ** Returns 1 if a log was found and replayed, 0 if no log exists. */
 int replay_session_log(int saved_errno)
 {
@@ -182,6 +187,7 @@ int replay_session_log(int saved_errno)
 		printf("%s[%s: session '%s' ended unexpectedly]\r\n",
 		       clear_csi_data(), progname, name);
 	}
+	log_already_replayed = 1;
 	return 1;
 }
 
@@ -252,6 +258,12 @@ int attach_main(int noerror)
 		return 1;
 	}
 
+	/* Replay the on-disk log so the user sees full session history.
+	** Skip if already replayed by the error path (exited-session case). */
+	int skip_ring = 0;
+	if (!log_already_replayed && replay_session_log(0))
+		skip_ring = 1;
+
 	/* Record session start time from the socket file's ctime. */
 	{
 		struct stat st;
@@ -297,9 +309,12 @@ int attach_main(int noerror)
 		write_buf_or_fail(1, "\r\n", 2);
 	}
 
-	/* Tell the master that we want to attach. */
+	/* Tell the master that we want to attach.
+	** pkt.len=1 means the client already loaded the log; master skips
+	** the in-memory ring replay to avoid showing history twice. */
 	memset(&pkt, 0, sizeof(struct packet));
 	pkt.type = MSG_ATTACH;
+	pkt.len = skip_ring;
 	write_packet_or_fail(s, &pkt);
 
 	/* We would like a redraw, too. */
