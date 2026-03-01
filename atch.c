@@ -22,6 +22,34 @@ void get_session_dir(char *buf, size_t size)
 		snprintf(buf, size, "/tmp/.%s-%d", base, (int)getuid());
 }
 
+/*
+** Long-path helper for Unix socket operations: saves cwd, chdirs into the
+** directory part of path, calls fn(basename), then restores cwd.
+** Used by connect_socket and create_socket to handle paths > sun_path limit.
+*/
+int socket_with_chdir(char *path, int (*fn)(char *))
+{
+	char *slash = strrchr(path, '/');
+	int dirfd, s;
+
+	if (!slash) {
+		errno = ENAMETOOLONG;
+		return -1;
+	}
+	dirfd = open(".", O_RDONLY);
+	if (dirfd < 0)
+		return -1;
+	*slash = '\0';
+	s = chdir(path) >= 0 ? fn(slash + 1) : -1;
+	*slash = '/';
+	if (s >= 0 && fchdir(dirfd) < 0) {
+		close(s);
+		s = -1;
+	}
+	close(dirfd);
+	return s;
+}
+
 /* argv[0] from the program */
 char *progname;
 /* The name of the passed in socket. */
@@ -30,10 +58,10 @@ char *sockname;
 int detach_char = '\\' - 64;
 /* 1 if we should not interpret the suspend character. */
 int no_suspend;
-/* The default redraw method. Initially set to winch. */
-int redraw_method = REDRAW_WINCH;
-/* The default clear method. Initially set to none. */
-int clear_method = CLEAR_NONE;
+/* The default redraw method. REDRAW_UNSPEC = auto: winch if tty, none otherwise. */
+int redraw_method = REDRAW_UNSPEC;
+/* Clear method. CLEAR_UNSPEC = auto: move if tty, none otherwise. */
+int clear_method = CLEAR_UNSPEC;
 int quiet = 0;
 /* 1 if we should not send ansi sequences to the terminal */
 int no_ansiterm = 0;
@@ -361,9 +389,10 @@ int main(int argc, char **argv)
 
 char const *clear_csi_data(void)
 {
-	if (no_ansiterm || clear_method == CLEAR_NONE)
+	if (no_ansiterm || clear_method == CLEAR_NONE ||
+	    (clear_method == CLEAR_UNSPEC && dont_have_tty))
 		return "\r\n";
-	/* CLEAR_MOVE / CLEAR_UNSPEC: move cursor to bottom of screen */
+	/* CLEAR_MOVE, or CLEAR_UNSPEC with a real tty: move to bottom */
 	return "\033[999H\r\n";
 }
 

@@ -127,6 +127,7 @@ void write_buf_or_fail(int fd, const void *buf, size_t count);
 void write_packet_or_fail(int fd, const struct packet *pkt);
 
 void get_session_dir(char *buf, size_t size);
+int socket_with_chdir(char *path, int (*fn)(char *));
 
 int replay_session_log(int saved_errno);
 int attach_main(int noerror);

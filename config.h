@@ -14,7 +14,6 @@
 #define PACKAGE_URL "https://github.com/mobydeck/atch"
 #define RETSIGTYPE void
 
-#define REDRAW_DEFAULT REDRAW_WINCH
 
 /* In-memory scrollback ring buffer size — must be a power of two */
 #ifndef SCROLLBACK_SIZE

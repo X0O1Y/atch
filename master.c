@@ -100,7 +100,7 @@ static void cleanup_session(void)
 }
 
 /* Signal */
-static RETSIGTYPE die(int sig)
+static RETSIGTYPE master_die(int sig)
 {
 	/* Well, the child died. */
 	if (sig == SIGCHLD) {
@@ -229,26 +229,8 @@ static int create_socket(char *name)
 	struct sockaddr_un sockun;
 	mode_t omask;
 
-	if (strlen(name) > sizeof(sockun.sun_path) - 1) {
-		char *slash = strrchr(name, '/');
-		if (slash) {
-			int dirfd = open(".", O_RDONLY);
-			if (dirfd >= 0) {
-				*slash = '\0';
-				s = chdir(name) >=
-				    0 ? create_socket(slash + 1) : -1;
-				*slash = '/';
-				if (s >= 0 && fchdir(dirfd) < 0) {
-					close(s);
-					s = -1;
-				}
-				close(dirfd);
-				return s;
-			}
-		}
-		errno = ENAMETOOLONG;
-		return -1;
-	}
+	if (strlen(name) > sizeof(sockun.sun_path) - 1)
+		return socket_with_chdir(name, create_socket);
 
 	omask = umask(077);
 	s = socket(PF_UNIX, SOCK_STREAM, 0);
@@ -350,7 +332,6 @@ static void replay_drain(struct client *p)
 		    (p->replay_head + (size_t)n) & (SCROLLBACK_SIZE - 1);
 		p->replay_remaining -= (size_t)n;
 	}
-	p->replay_remaining = 0;
 	p->attached = 1;
 }
 
@@ -374,7 +355,7 @@ static void pty_activity(int s)
 {
 	unsigned char buf[BUFSIZE];
 	ssize_t len;
-	struct client *p;
+	struct client *p, *next;
 	fd_set readfds, writefds;
 	int highest_fd, nclients;
 
@@ -427,9 +408,10 @@ static void pty_activity(int s)
 		return;
 
 	/* Send the data out to the clients. */
-	for (p = clients, nclients = 0; p; p = p->next) {
+	for (p = clients, nclients = 0; p; p = next) {
 		ssize_t written;
 
+		next = p->next;
 		if (!FD_ISSET(p->fd, &writefds))
 			continue;
 
@@ -442,12 +424,18 @@ static void pty_activity(int s)
 				continue;
 			} else if (n < 0 && errno == EINTR)
 				continue;
-			else if (n < 0 && errno != EAGAIN)
-				nclients = -1;
 			break;
 		}
-		if (nclients != -1 && written == len)
+		if (written == len) {
 			nclients++;
+		} else if (errno != EAGAIN) {
+			/* Write error: drop this client */
+			close(p->fd);
+			if (next)
+				next->pprev = p->pprev;
+			*(p->pprev) = next;
+			free(p);
+		}
 	}
 
 	/* Try again if nothing happened. */
@@ -584,7 +572,7 @@ static void master_process(int s, char **argv, int waitattach, int statusfd)
 	atexit(cleanup_session);
 
 	/* Create a pty in which the process is running. */
-	signal(SIGCHLD, die);
+	signal(SIGCHLD, master_die);
 	if (init_pty(argv, statusfd) < 0) {
 		if (statusfd != -1)
 			dup2(statusfd, 1);
@@ -601,8 +589,8 @@ static void master_process(int s, char **argv, int waitattach, int statusfd)
 	signal(SIGHUP, SIG_IGN);
 	signal(SIGTTIN, SIG_IGN);
 	signal(SIGTTOU, SIG_IGN);
-	signal(SIGINT, die);
-	signal(SIGTERM, die);
+	signal(SIGINT, master_die);
+	signal(SIGTERM, master_die);
 
 	/* Close statusfd, since we don't need it anymore. */
 	if (statusfd != -1)
@@ -698,7 +686,7 @@ int master_main(char **argv, int waitattach, int dontfork)
 
 	/* Use a default redraw method if one hasn't been specified yet. */
 	if (redraw_method == REDRAW_UNSPEC)
-		redraw_method = REDRAW_DEFAULT;
+		redraw_method = dont_have_tty ? REDRAW_NONE : REDRAW_WINCH;
 
 	/* Create the unix domain socket. */
 	s = create_socket(sockname);

@@ -36,26 +36,8 @@ static int connect_socket(char *name)
 	int s;
 	struct sockaddr_un sockun;
 
-	if (strlen(name) > sizeof(sockun.sun_path) - 1) {
-		char *slash = strrchr(name, '/');
-		if (slash) {
-			int dirfd = open(".", O_RDONLY);
-			if (dirfd >= 0) {
-				*slash = '\0';
-				s = chdir(name) >=
-				    0 ? connect_socket(slash + 1) : -1;
-				*slash = '/';
-				if (s >= 0 && fchdir(dirfd) < 0) {
-					close(s);
-					s = -1;
-				}
-				close(dirfd);
-				return s;
-			}
-		}
-		errno = ENAMETOOLONG;
-		return -1;
-	}
+	if (strlen(name) > sizeof(sockun.sun_path) - 1)
+		return socket_with_chdir(name, connect_socket);
 
 	s = socket(PF_UNIX, SOCK_STREAM, 0);
 	if (s < 0)
@@ -72,7 +54,7 @@ static int connect_socket(char *name)
 
 			if (stat(name, &st) < 0)
 				return -1;
-			else if (!S_ISSOCK(st.st_mode) || S_ISREG(st.st_mode))
+			else if (!S_ISSOCK(st.st_mode))
 				errno = ENOTSOCK;
 		}
 		return -1;
@@ -196,8 +178,7 @@ int replay_session_log(int saved_errno)
 	/* Socket still on disk = killed/crashed; clean exit already wrote its
 	 * end marker into the log, so no extra message needed. */
 	if (saved_errno == ECONNREFUSED) {
-		name = strrchr(sockname, '/');
-		name = name ? name + 1 : sockname;
+		name = session_shortname();
 		printf("%s[%s: session '%s' ended unexpectedly]\r\n",
 		       clear_csi_data(), progname, name);
 	}
@@ -228,15 +209,11 @@ int attach_main(int noerror)
 
 				if (tlen == slen
 				    && strncmp(p, sockname, tlen) == 0) {
-					if (!noerror) {
-						const char *name =
-						    strrchr(sockname, '/');
-						name =
-						    name ? name + 1 : sockname;
+					if (!noerror)
 						printf
 						    ("%s: cannot attach to session '%s' from within itself\n",
-						     progname, name);
-					}
+						     progname,
+						     session_shortname());
 					return 1;
 				}
 				if (!colon)
@@ -251,9 +228,7 @@ int attach_main(int noerror)
 	s = connect_socket(sockname);
 	if (s < 0) {
 		int saved_errno = errno;
-		const char *name = strrchr(sockname, '/');
-
-		name = name ? name + 1 : sockname;
+		const char *name = session_shortname();
 
 		if (!noerror) {
 			if (!replay_session_log(saved_errno)) {
@@ -474,14 +449,12 @@ static int session_gone(void)
 
 int kill_main(void)
 {
-	const char *name;
+	const char *name = session_shortname();
 	int i;
 
 	signal(SIGPIPE, SIG_IGN);
 
 	if (send_kill(SIGTERM) < 0) {
-		name = strrchr(sockname, '/');
-		name = name ? name + 1 : sockname;
 		if (errno == ENOENT)
 			printf("%s: session '%s' does not exist\n",
 			       progname, name);
@@ -493,9 +466,6 @@ int kill_main(void)
 			       strerror(errno));
 		return 1;
 	}
-
-	name = strrchr(sockname, '/');
-	name = name ? name + 1 : sockname;
 
 	/* Wait up to 5 seconds for graceful exit. */
 	for (i = 0; i < 50; i++) {
