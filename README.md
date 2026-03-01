@@ -227,13 +227,16 @@ recent 1 MB is kept. To change the cap, build with:
 make CFLAGS="-DLOG_MAX_SIZE=$((4*1024*1024))"
 ```
 
-### In-memory ring buffer (fast replay)
+### In-memory ring buffer
 
-While the session is running, `atch` also maintains a 128 KB ring buffer in
-the master process. When a new client attaches to a running session that has
-no on-disk log to replay, the ring is used to deliver the most recent output
-instantly, without a disk read. The ring is lost when the master exits, but
-the on-disk log covers that case.
+While the session is running, `atch` maintains a 128 KB ring buffer in the
+master process. Because the on-disk log is always present, the ring is not
+used for initial attach. Its role is the **suspend/resume path**: when you
+press `^Z` to suspend and then resume, the ring replays the most recent output
+instantly so your display is current — without reading the log file. It also
+acts as a safety fallback in the unlikely event the log cannot be read.
+
+The ring is lost when the master exits; the on-disk log covers that case.
 
 To adjust the ring size, build with:
 
