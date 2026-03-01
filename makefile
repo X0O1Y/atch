@@ -22,6 +22,8 @@ atch.1.md: README.md scripts/readme2man.sh
 atch.1: atch.1.md
 	pandoc --standalone -t man $< -o $@
 
+man: atch.1
+
 clean:
 	rm -f atch $(OBJ) *.1{,.md} *.c~
 

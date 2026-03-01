@@ -288,12 +288,13 @@ int attach_main(int noerror)
 	cur_term.c_cc[VTIME] = 0;
 	tcsetattr(0, TCSADRAIN, &cur_term);
 
-	/* Clear the screen. This assumes VT100. */
-	if (clear_method == CLEAR_NONE) {
-		if (!quiet)
-			write_buf_or_fail(1, "\r\n", 2);
-	} else if (!no_ansiterm) {
+	/* Clear the screen on attach. Only do a full reset when explicitly
+	** requested (CLEAR_MOVE); default/unspec just emits a blank line so
+	** any preceding log replay remains visible. */
+	if (clear_method == CLEAR_MOVE && !no_ansiterm) {
 		write_buf_or_fail(1, "\033c", 2);
+	} else if (!quiet) {
+		write_buf_or_fail(1, "\r\n", 2);
 	}
 
 	/* Tell the master that we want to attach. */

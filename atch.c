@@ -379,6 +379,33 @@ static int cmd_kill(int argc, char **argv)
 	return kill_main();
 }
 
+/* atch clear <session> — truncate the on-disk session log */
+static int cmd_clear(int argc, char **argv)
+{
+	char log_path[600];
+	int fd;
+
+	if (consume_session(&argc, &argv))
+		return 1;
+	if (argc > 0) {
+		printf("%s: Invalid number of arguments.\n", progname);
+		printf("Try '%s --help' for more information.\n", progname);
+		return 1;
+	}
+	snprintf(log_path, sizeof(log_path), "%s.log", sockname);
+	fd = open(log_path, O_WRONLY | O_TRUNC);
+	if (fd >= 0) {
+		close(fd);
+		if (!quiet)
+			printf("%s: session '%s' log cleared\n",
+			       progname, session_shortname());
+	} else if (errno != ENOENT) {
+		printf("%s: %s: %s\n", progname, log_path, strerror(errno));
+		return 1;
+	}
+	return 0;
+}
+
 /* Default: atch <session> [cmd...] — attach-or-create */
 static int cmd_open(char *session, int argc, char **argv)
 {
@@ -426,6 +453,8 @@ static void usage(void)
 	       "\t\t\tPipe stdin into session\n"
 	       "  kill    <session>"
 	       "\t\t\tStop session (SIGTERM then SIGKILL)\n"
+	       "  clear   <session>"
+	       "\t\t\tTruncate the session log\n"
 	       "  list\t\t\t\t\tList all sessions\n"
 	       "  current\t\t\t\tPrint current session name\n"
 	       "\n"
@@ -585,6 +614,8 @@ int main(int argc, char **argv)
 		return cmd_push(argc, argv);
 	if (is_cmd(cmd, "kill", "k", NULL))
 		return cmd_kill(argc, argv);
+	if (is_cmd(cmd, "clear", NULL, NULL))
+		return cmd_clear(argc, argv);
 
 	/* Smart default: treat first arg as session name → attach-or-create */
 	return cmd_open((char *)cmd, argc, argv);
