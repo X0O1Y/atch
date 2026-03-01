@@ -125,6 +125,7 @@ static void process_kbd(int s, struct packet *pkt)
 
 		/* Tell the master that we are returning. */
 		pkt->type = MSG_ATTACH;
+		pkt->len = 0;	/* normal ring replay on resume */
 		write_packet_or_fail(s, pkt);
 
 		/* We would like a redraw, too. */
@@ -302,10 +303,13 @@ int attach_main(int noerror)
 
 	/* Clear the screen on attach. Only do a full reset when explicitly
 	** requested (CLEAR_MOVE); default/unspec just emits a blank line so
-	** any preceding log replay remains visible. */
+	** any preceding log replay remains visible.
+	** When log replay was done for a running session (skip_ring=1), skip
+	** the separator: the log ends at the exact pty cursor position, so
+	** the prompt is already visible and correctly placed. */
 	if (clear_method == CLEAR_MOVE && !no_ansiterm) {
 		write_buf_or_fail(1, "\033c", 2);
-	} else if (!quiet) {
+	} else if (!quiet && !skip_ring) {
 		write_buf_or_fail(1, "\r\n", 2);
 	}
 
