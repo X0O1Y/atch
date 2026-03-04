@@ -67,6 +67,7 @@
 
 extern char *progname, *sockname;
 extern int detach_char, no_suspend, redraw_method, clear_method, no_ansiterm, quiet;
+extern size_t log_max_size;
 extern struct termios orig_term;
 extern int dont_have_tty;
 extern time_t session_start;

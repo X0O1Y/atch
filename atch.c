@@ -108,6 +108,31 @@ int no_ansiterm = 0;
 struct termios orig_term;
 int dont_have_tty;
 
+/* Parse a size string: bare number, or number with k/K (×1024) or m/M (×1048576).
+** Writes result to *out. Returns 0 on success, 1 on error. */
+static int parse_size(const char *s, size_t *out)
+{
+	char *end;
+	unsigned long v;
+
+	if (!s || !*s)
+		return 1;
+	v = strtoul(s, &end, 10);
+	if (end == s)
+		return 1;
+	if (*end == 'k' || *end == 'K') {
+		v *= 1024;
+		end++;
+	} else if (*end == 'm' || *end == 'M') {
+		v *= 1024 * 1024;
+		end++;
+	}
+	if (*end != '\0')
+		return 1;
+	*out = (size_t)v;
+	return 0;
+}
+
 /*
 ** Parse option flags from argv/argc. Stops at '--' or a non-option argument.
 ** Returns 0 on success, 1 on error (message already printed).
@@ -192,6 +217,24 @@ static int parse_options(int *argc, char ***argv)
 				else {
 					printf("%s: Invalid clear method "
 					       "specified.\n", progname);
+					printf("Try '%s --help' for more "
+					       "information.\n", progname);
+					return 1;
+				}
+				break;
+			} else if (*p == 'C') {
+				++(*argv);
+				--(*argc);
+				if (*argc < 1) {
+					printf("%s: No log size "
+					       "specified.\n", progname);
+					printf("Try '%s --help' for more "
+					       "information.\n", progname);
+					return 1;
+				}
+				if (parse_size((*argv)[0], &log_max_size)) {
+					printf("%s: Invalid log size "
+					       "'%s'.\n", progname, (*argv)[0]);
 					printf("Try '%s --help' for more "
 					       "information.\n", progname);
 					return 1;
@@ -549,6 +592,7 @@ static void usage(void)
 	       "  -z\t\tDisable suspend key\n"
 	       "  -q\t\tSuppress messages\n"
 	       "  -t\t\tDisable VT100 assumptions\n"
+	       "  -C <size>\tLog cap: 0=disable, e.g. 128k, 4m (default 1m)\n"
 	       "\nURL: " PACKAGE_URL "\n\n",
 	       PACKAGE_VERSION, __DATE__, __TIME__);
 	exit(0);
@@ -588,7 +632,7 @@ int main(int argc, char **argv)
 		char c = argv[0][1];
 
 		if (c != 'e' && c != 'E' && c != 'r' && c != 'R' &&
-		    c != 'z' && c != 'q' && c != 't')
+		    c != 'z' && c != 'q' && c != 't' && c != 'C')
 			break;
 		if (parse_options(&argc, &argv))
 			return 1;

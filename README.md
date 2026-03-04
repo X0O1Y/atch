@@ -102,6 +102,7 @@ Options can appear before the subcommand, before the session name, or after the 
 | `-z` | Disable suspend-key (`^Z`) processing (pass it to the program instead). |
 | `-q` | Suppress informational messages. |
 | `-t` | Disable VT100 assumptions. |
+| `-C <size>` | Set the on-disk log cap for the session being created. Accepts a bare number (bytes), or a number with `k`/`K` (KiB) or `m`/`M` (MiB) suffix. `0` disables the log entirely. Default: `1m`. |
 
 Use `--` to separate atch options from command arguments that start with `-`:
 
@@ -243,7 +244,19 @@ output is gone. With `atch` the raw byte stream is on disk until you
 explicitly clear it with `atch clear <session>`.
 
 The log is capped at 1 MB by default; once it exceeds that, only the most
-recent 1 MB is kept. To change the cap, build with:
+recent 1 MB is kept. You can change the cap per session with `-C`:
+
+```sh
+atch -C 4m new mysession       # 4 MB cap
+atch -C 128k start daemon      # 128 KB cap
+atch -C 0 start daemon         # no log at all
+```
+
+When the log is disabled with `-C 0`, re-attaching to a **running** session
+still replays recent output from the in-memory ring buffer. Only cold replay
+of a dead session (after the master has exited) is unavailable.
+
+To change the compiled-in default, build with:
 
 ```sh
 make CFLAGS="-DLOG_MAX_SIZE=$((4*1024*1024))"
@@ -252,11 +265,11 @@ make CFLAGS="-DLOG_MAX_SIZE=$((4*1024*1024))"
 ### In-memory ring buffer
 
 While the session is running, `atch` maintains a 128 KB ring buffer in the
-master process. Because the on-disk log is always present, the ring is not
-used for initial attach. Its role is the **suspend/resume path**: when you
-press `^Z` to suspend and then resume, the ring replays the most recent output
-instantly so your display is current — without reading the log file. It also
-acts as a safety fallback in the unlikely event the log cannot be read.
+master process. It is the primary replay source when you re-attach: the ring
+replays the most recent output instantly so your display is current. When the
+on-disk log is also present it covers the full history; when logging is
+disabled (`-C 0`) the ring is the only replay source available while the
+session is live.
 
 The ring is lost when the master exits; the on-disk log covers that case.
 

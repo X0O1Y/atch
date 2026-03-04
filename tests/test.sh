@@ -562,7 +562,55 @@ run grep -q "hello-log-test" "$HOME/.cache/atch/log-test.log"
 assert_exit "session output written to log"          0 "$rc"
 tidy log-test
 
-# ── 20. no-args → usage ──────────────────────────────────────────────────────
+# ── 20. -C log cap flag ──────────────────────────────────────────────────────
+
+# valid sizes: 0 (disable), k/K suffix, m/M suffix, bare bytes
+run "$ATCH" start -C 0 C-test0 sleep 999
+assert_exit     "-C 0: exits 0"                      0 "$rc"
+assert_contains "-C 0: confirmation"                 "started" "$out"
+# log file must NOT exist when logging is disabled
+if [ -e "$HOME/.cache/atch/C-test0.log" ]; then
+    fail "-C 0: no log file created" "no file" "file exists"
+else
+    ok "-C 0: no log file created"
+fi
+tidy C-test0
+
+# -C before the subcommand (global pre-pass position)
+run "$ATCH" -C 0 start C-global sleep 999
+assert_exit     "-C 0 (global position): exits 0"    0 "$rc"
+if [ -e "$HOME/.cache/atch/C-global.log" ]; then
+    fail "-C 0 (global position): no log file" "no file" "file exists"
+else
+    ok "-C 0 (global position): no log file"
+fi
+tidy C-global
+
+run "$ATCH" start -C 128k C-128k sleep 999
+assert_exit     "-C 128k: exits 0"                   0 "$rc"
+assert_contains "-C 128k: confirmation"              "started" "$out"
+tidy C-128k
+
+run "$ATCH" start -C 4m C-4m sleep 999
+assert_exit     "-C 4m: exits 0"                     0 "$rc"
+assert_contains "-C 4m: confirmation"                "started" "$out"
+tidy C-4m
+
+run "$ATCH" start -C 65536 C-bytes sleep 999
+assert_exit     "-C <bytes>: exits 0"                0 "$rc"
+tidy C-bytes
+
+# missing argument
+run "$ATCH" start -C
+assert_exit     "-C missing arg: exit 1"             1 "$rc"
+assert_contains "-C missing arg: message"            "No log size" "$out"
+
+# invalid value
+run "$ATCH" start -C foo C-bad sleep 999
+assert_exit     "-C invalid: exit 1"                 1 "$rc"
+assert_contains "-C invalid: message"                "Invalid log size" "$out"
+
+# ── 21. no-args → usage ──────────────────────────────────────────────────────
 
 # Invoking with zero arguments calls usage() (exits 0, prints help).
 # We already consumed the binary name in main, so argc < 1 → usage().

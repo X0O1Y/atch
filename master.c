@@ -41,6 +41,7 @@ static struct pty the_pty;
 static int log_fd = -1;
 static size_t log_written;
 static time_t master_start_time;
+size_t log_max_size = LOG_MAX_SIZE;
 
 /* Scrollback ring buffer */
 static unsigned char scrollback_buf[SCROLLBACK_SIZE];
@@ -58,11 +59,11 @@ static void rotate_log(void)
 	ssize_t n;
 
 	size = lseek(log_fd, 0, SEEK_END);
-	if (size > LOG_MAX_SIZE) {
-		buf = malloc(LOG_MAX_SIZE);
+	if (size > (off_t) log_max_size) {
+		buf = malloc(log_max_size);
 		if (buf) {
-			lseek(log_fd, size - LOG_MAX_SIZE, SEEK_SET);
-			n = read(log_fd, buf, LOG_MAX_SIZE);
+			lseek(log_fd, size - (off_t) log_max_size, SEEK_SET);
+			n = read(log_fd, buf, log_max_size);
 			if (n > 0) {
 				ftruncate(log_fd, 0);
 				lseek(log_fd, 0, SEEK_SET);
@@ -389,7 +390,7 @@ static void pty_activity(int s)
 	if (log_fd >= 0) {
 		write(log_fd, buf, (size_t)len);
 		log_written += (size_t)len;
-		if (log_written >= LOG_MAX_SIZE) {
+		if (log_written >= log_max_size) {
 			rotate_log();
 			log_written = 0;
 		}
@@ -723,13 +724,13 @@ int master_main(char **argv, int waitattach, int dontfork)
 	}
 
 	/* Open the persistent session log (best-effort; ignore failures). */
-	{
+	if (log_max_size > 0) {
 		char log_path[600];
 
 		snprintf(log_path, sizeof(log_path), "%s.log", sockname);
 		log_fd = open_log(log_path);
-		master_start_time = time(NULL);
 	}
+	master_start_time = time(NULL);
 #if defined(F_SETFD) && defined(FD_CLOEXEC)
 	fcntl(s, F_SETFD, FD_CLOEXEC);
 
