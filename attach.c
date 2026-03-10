@@ -134,11 +134,11 @@ void format_age(time_t secs, char *buf, size_t size)
 	int s = (int)(secs % 60);
 
 	if (d > 0)
-		snprintf(buf, size, "%dd %dh %dm %ds", d, h, m, s);
+		snprintf(buf, size, "%dd %dh %dmin %ds", d, h, m, s);
 	else if (h > 0)
-		snprintf(buf, size, "%dh %dm %ds", h, m, s);
+		snprintf(buf, size, "%dh %dmin %ds", h, m, s);
 	else if (m > 0)
-		snprintf(buf, size, "%dm %ds", m, s);
+		snprintf(buf, size, "%dmin %ds", m, s);
 	else
 		snprintf(buf, size, "%ds", s);
 }
